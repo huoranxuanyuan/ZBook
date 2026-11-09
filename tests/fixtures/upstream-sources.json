@@ -1,0 +1,17 @@
+[
+  {
+    "file": "upstream_SampleDoc.doc",
+    "source": "https://svn.apache.org/repos/asf/poi/trunk/test-data/document/SampleDoc.doc",
+    "sha256": "717585c0a88f20862c86220163dd03da87cd743970354c6b29add32725f2e833"
+  },
+  {
+    "file": "upstream_simple-table.doc",
+    "source": "https://svn.apache.org/repos/asf/poi/trunk/test-data/document/simple-table.doc",
+    "sha256": "67d7fe8e0555c16516354498a5935f24eeef90beb5efbf526f93a1d6c734da43"
+  },
+  {
+    "file": "upstream_simple.doc",
+    "source": "https://svn.apache.org/repos/asf/poi/trunk/test-data/document/simple.doc",
+    "sha256": "4876e828e62d490fa188c7c4e47013e2e0dfdf02f5903dfd374bc0d2b2049ca1"
+  }
+]

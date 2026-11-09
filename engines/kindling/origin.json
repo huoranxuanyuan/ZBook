@@ -1,0 +1,8 @@
+{
+  "name": "Kindling",
+  "version": "0.46.2",
+  "license": "MIT",
+  "source": "https://github.com/ciscoriordan/kindling/tree/v0.46.2",
+  "asset": "https://github.com/ciscoriordan/kindling/releases/download/v0.46.2/kindling-cli-windows.exe",
+  "sha256": "03b0e16a66053cf57a4a5d6f14847e7e62d695fb1ec9e3f400d23d21b311c0a1"
+}

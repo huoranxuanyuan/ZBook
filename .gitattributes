@@ -1,0 +1,12 @@
+# Preserve exact release input bytes across checkout and staging.
+# Text files retain their existing LF/CRLF; binaries never use text filters.
+* -text
+*.exe binary
+*.pdf binary
+*.doc binary
+*.docx binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.bmp binary
+*.webp binary
