@@ -196,7 +196,9 @@ class SecurityTests(unittest.TestCase):
                 any("第 1 页" in warning and "OCR" in warning for warning in result.warnings)
             )
 
-    def test_browser_retention_does_not_remove_live_profile(self):
+    @patch.object(CacheMaintenance, "_legacy_active", return_value=False)
+    def test_browser_retention_does_not_remove_live_profile(self, _legacy):
+        # Other running ZBook windows must not affect this isolated lease test.
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             browser = root / "archive/browser-search"

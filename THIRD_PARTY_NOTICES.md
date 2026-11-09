@@ -1,6 +1,6 @@
 # 第三方组件与对应源码
 
-ZBook 原创源码按 GNU Affero General Public License v3（AGPL-3.0）提供，完整文本见 LICENSE。所包含的第三方组件保留其原许可证、作者和声明；下列摘要不替代 licenses/ 内的原文。
+ZBook 原创源码按 GNU Affero General Public License v3 only（AGPL-3.0-only）提供，完整文本见 [LICENSE](LICENSE)。所包含的第三方组件保留其原许可证、作者和声明；下列摘要不替代 licenses/ 内的原文。
 
 | 组件 | 版本 | 用途及许可证 |
 | --- | --- | --- |

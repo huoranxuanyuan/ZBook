@@ -1,22 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 from pathlib import Path
-import os
-import sys
+import tempfile
 import unittest
-import uuid
 from unittest.mock import patch
 import requests
 
-WORK = Path(__file__).resolve().parent
-sys.path.append(str(Path(__file__).resolve().parent))
-os.environ["ZBOOK_DATA_DIR"] = str(WORK / "archive/cover-state-tests")
 import covers
 
 
 class CoverStateTests(unittest.TestCase):
     def setUp(self):
-        folder = WORK / "archive/cover-state-tests" / uuid.uuid4().hex
-        folder.mkdir(parents=True)
+        temporary = tempfile.TemporaryDirectory(prefix="zbook-cover-tests-")
+        self.addCleanup(temporary.cleanup)
+        folder = Path(temporary.name)
         self.cache_patch = patch.object(covers, "CACHE", folder)
         self.cache_patch.start()
         self.addCleanup(self.cache_patch.stop)

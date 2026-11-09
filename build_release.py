@@ -49,11 +49,17 @@ SOURCE_FILES = [
     "test_remaining_requirements.py",
     "test_security_regressions.py",
     "test_native_file_drop.py",
+    "test_project_workflows.py",
     "ui_layout.py",
     "ui_widgets.py",
 ]
 DOCS = [
     ".gitattributes",
+    ".editorconfig",
+    "pyproject.toml",
+    "requirements-dev.txt",
+    "CONTRIBUTING.md",
+    "third-party-sources.json",
     "AGENTS.md",
     "AUTHORS.md",
     "README.md",
@@ -90,6 +96,13 @@ def source_files():
     ]
     paths += [ROOT / "tests/fixtures" / name for name in fixtures]
     paths += [p for p in (ROOT / "licenses").rglob("*") if p.is_file()]
+    for folder in ("tools", "docs", "examples", ".github"):
+        paths += [
+            p
+            for p in (ROOT / folder).rglob("*")
+            if p.is_file()
+            and p.suffix.lower() in {".py", ".md", ".png", ".txt", ".json", ".yml", ".yaml"}
+        ]
     for path in paths:
         if not path.is_file() or path.is_symlink():
             raise ValueError("Missing or invalid release input: " + str(path))
@@ -132,7 +145,7 @@ def main():
         )
     release.mkdir(parents=True, exist_ok=True)
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    work = args.work_dir or ROOT.parent / "maintenance" / ("build-" + VERSION + "-" + stamp)
+    work = args.work_dir or ROOT / "archive" / "builds" / (VERSION + "-" + stamp)
     work = work.resolve()
     work.mkdir(parents=True, exist_ok=False)
     revision = source_revision()
@@ -258,9 +271,18 @@ def main():
         "THIRD_PARTY_NOTICES.md",
         "LICENSE",
         "CHANGELOG.md",
+        "BUILDING.md",
+        "CONTRIBUTING.md",
+        "pyproject.toml",
+        "requirements.txt",
+        "requirements-build.txt",
+        "requirements-dev.txt",
+        "third-party-sources.json",
     ):
         shutil.copy2(ROOT / name, portable / name)
     shutil.copytree(ROOT / "licenses", portable / "licenses")
+    shutil.copytree(ROOT / "docs", portable / "docs")
+    shutil.copytree(ROOT / "examples", portable / "examples")
     (portable / "release-manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )

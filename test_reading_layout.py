@@ -2,6 +2,7 @@
 """Reading-order and default typography regressions."""
 
 import unittest, zipfile, json
+import tempfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from core import parse_text, Metadata
@@ -9,9 +10,6 @@ from epub_export import write_epub
 from batch import Options
 from reading_style import migrate_settings, LINE_HEIGHT, PARAGRAPH_GAP
 
-ROOT = Path(__file__).resolve().parent
-WORK = ROOT / "archive/reading-layout-tests"
-WORK.mkdir(parents=True, exist_ok=True)
 N = {
     "o": "http://www.idpf.org/2007/opf",
     "x": "http://www.w3.org/1999/xhtml",
@@ -20,6 +18,11 @@ N = {
 
 
 class ReadingLayoutTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="zbook-reading-tests-")
+        self.addCleanup(temporary.cleanup)
+        self.work = Path(temporary.name)
+
     def test_real_world_chapter_boundaries(self):
         book = parse_text(
             "版权信息\n内容简介：\n简介文字。\n第一集 第1章 初临起源大陆\n起点正文。\n第2章 继续。\n后续正文。",
@@ -35,7 +38,7 @@ class ReadingLayoutTests(unittest.TestCase):
         )
         self.assertEqual(len(repeated.chapters), 1)
         self.assertIn("成为神上神", repeated.chapters[0].text)
-        path = WORK / "combined-heading.epub"
+        path = self.work / "combined-heading.epub"
         write_epub(book, path)
         with zipfile.ZipFile(path) as z:
             opf = ET.fromstring(z.read("OEBPS/content.opf"))
@@ -50,7 +53,7 @@ class ReadingLayoutTests(unittest.TestCase):
             "版权前言。\n第一卷 初始\n第一章 起点\n正文甲。\n第二章 后续\n正文乙。",
             Metadata("阅读顺序", "作者"),
         )
-        path = WORK / "reading-order.epub"
+        path = self.work / "reading-order.epub"
         write_epub(book, path)
         with zipfile.ZipFile(path) as z:
             opf = ET.fromstring(z.read("OEBPS/content.opf"))
@@ -80,7 +83,7 @@ class ReadingLayoutTests(unittest.TestCase):
             self.assertNotIn("page-break-before: always", css)
 
     def test_custom_spacing_still_works(self):
-        path = WORK / "custom-spacing.epub"
+        path = self.work / "custom-spacing.epub"
         write_epub(
             parse_text("第一章 一\n正文", Metadata("测试", "")),
             path,

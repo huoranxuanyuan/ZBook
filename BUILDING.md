@@ -1,17 +1,83 @@
-# 从源码构建
+# 从源码运行、检查与构建
 
-维护基线为本目录。使用 Windows x64、官方 Python 3.14.10（包含 Tcl/Tk 和 pip）。不依赖任何编辑器、AI 客户端或其进程；关闭编辑器不会影响已启动的应用。
+受验证的构建环境是 Windows x64、官方 Python 3.14.10（包含 Tcl/Tk 与 pip）。以下命令从仓库根目录执行；运行与构建不依赖任何编辑器进程。
 
-1. 创建独立 Python 环境，执行 `python -m pip install -r requirements-build.txt`。
-2. 运行 `python -m unittest discover -p "test_*.py"`。界面测试需要桌面会话；测试会使用临时目录。正式发布前应在隔离数据目录执行测试。
-3. 运行 `python build_release.py --dist-dir <新的空发布目录>`。程序拒绝覆盖已有发布目录，输出单文件便携程序、便携 ZIP、对应源码 ZIP 及真实版本/哈希清单。
-4. 以 `ZBOOK_DATA_DIR` 指定新的验收目录，运行 `ZBook.exe --smoke-test <公开测试TXT> <测试输出目录>`；加 `--network` 可同时检验真实封面检索。不要使用私人书籍做公开样例。
-5. 核对独立阅读器的 EPUB/MOBI 正文、末段、分卷目录和封面；发布可验证的 SHA256SUMS.txt。上传 Windows-x64.zip、source.zip、third-party-sources.zip，二进制与对应源码必须同版本可获得。
+## 准备环境
 
-固定 Python 包版本见 requirements*.txt，Kindling 的来源及哈希见 engines/kindling/origin.json。更新依赖时先审查上游公告并重新完成回归与打包验收。来自 PyPI 的原始源码与 Kindling Rust 依赖归档在 third-party-sources 发布附件；依照上游构建说明可以重新构建第三方组件。
+```text
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements-build.txt
+```
 
-只提交源文件、必要素材、固定版本依赖清单和许可证。禁止提交 data/、archive/、个人输出、浏览器配置、维护缓存、构建环境或旧发布目录。.gitignore 只防止新文件误加入，已被跟踪的数据仍需单独检查。新增源文件时同步 build_release.py 的发布白名单。
+日常开发另安装格式检查工具：
 
-从 Git 仓库构建正式包前，先提交已经检查的改动并保持工作区干净。`release-manifest.json` 记录 Git 提交、软件作者及逐文件源码哈希，便于核对发布内容；从不带 `.git` 的源码压缩包也可以构建，此时提交信息为空，以源码哈希清单核对。
+```text
+.venv\Scripts\python -m pip install -r requirements-dev.txt
+```
 
-构建会在 maintenance/ 下产生日志和缓存，保留供验收；验收结束后归档。需要删除时移入回收站。toolchain/ 是后续更新所需的本地构建环境，不随便携包发布。
+运行桌面界面：
+
+```text
+.venv\Scripts\python app.py
+```
+
+命令行转换示例（输出在 `output`，默认不开启联网搜图）：
+
+```text
+.venv\Scripts\python cli.py examples\novel.txt --output output --formats epub mobi
+```
+
+添加 `--auto-cover` 可在缺少本地图片时联网搜封面。其他参数见 `python cli.py --help`。源码运行默认在仓库旁生成 `data/` 与 `archive/`；如需隔离，请在启动前设置 `ZBOOK_DATA_DIR`，它表示数据根目录，而不是其中的 `data` 子目录。
+
+## 运行检查
+
+```text
+.venv\Scripts\python tools\check.py
+.venv\Scripts\python -m black --check .
+```
+
+`tools/check.py` 在新的独立目录执行全部 `unittest` 回归，阻止直接网络连接，保留临时测试资料，并把测试清理动作转成隔离目录内的归档移动。默认报告在 `archive/checks/<时间与随机编号>/`；可通过 `--output-dir` 指定**新的空目录**。界面与原生拖放测试需要 Windows 桌面会话。
+
+测试资料使用合成文本与公开测试素材。真实联网封面检索和真机阅读效果需要另外检查；离线回归通过不代表各网站始终可用。
+
+格式配置在 [pyproject.toml](pyproject.toml)，工具版本固定在 [requirements-dev.txt](requirements-dev.txt)。新增文件要同步构建白名单；新的源码和文档也必须进入对应源码包。
+
+## 构建便携版
+
+先提交已经检查的源码，保持 Git 工作区干净。以下 `release-output` 必须是新的空目录：
+
+```text
+.venv\Scripts\python build_release.py --dist-dir release-output
+```
+
+该步骤生成：
+
+- `ZBook-1.0.0-Windows-x64/`：便携程序、说明、许可证与 `release-manifest.json`。
+- `ZBook-1.0.0-Windows-x64.zip`：便携压缩包。
+- `ZBook-1.0.0-source.zip`：对应项目源码。
+
+构建日志与中间文件保存在 `archive/builds/`，或用 `--work-dir` 指定新目录。程序拒绝覆盖已有发布物。清单记录依赖、编码器、作者、EXE 哈希与源码逐文件哈希；从 Git 构建时还记录提交，从不带 `.git` 的源码压缩包也可构建。
+
+## 验收与完成组包
+
+取得同版本的第三方源码附件，按[第三方源码说明](docs/THIRD_PARTY_SOURCES.md)核对来源。然后运行：
+
+```text
+.venv\Scripts\python tools\release.py --release-dir release-output --third-party-sources path\to\ZBook-1.0.0-third-party-sources.zip --smoke
+```
+
+工具会校验当前源码、对应源码 ZIP、便携 ZIP 与程序清单，核对第三方源码附件的固定哈希，执行实际 EXE 的 EPUB/MOBI 合成文本转换验收，再生成 `SHA256SUMS.txt`。测试输出保留在 `archive/release-checks/`。`--smoke` 使用本地合成封面，不执行在线搜图。
+
+已有完整发布目录可只检查、不重新组包：
+
+```text
+.venv\Scripts\python tools\release.py --release-dir release-output --verify-only --smoke
+```
+
+发布到 GitHub 时，上传便携 ZIP、项目源码 ZIP、第三方源码 ZIP 和 `SHA256SUMS.txt`。对应源码必须与二进制同时可获得；仓库自身不存放发布 ZIP、工具链、个人书籍或运行资料。发布前还应实际查看封面、分卷导航和目标阅读器的显示效果。
+
+## 维护注意事项
+
+依赖与编码器版本固定在 `requirements*.txt` 和 `engines/kindling/origin.json`。更新后应重新审查上游、运行相关回归、更新第三方源码锁与许可证。不要只替换 EXE 而沿用旧的源码清单。
+
+开发、测试与构建缓存不进入 Git。需要清理时移入回收站；不要将正式输出、活动浏览器配置或用户原文件作为缓存处理。
