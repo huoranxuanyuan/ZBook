@@ -2,10 +2,10 @@
 """Build a clean Windows x64 release from an explicit publication allowlist."""
 from pathlib import Path
 import argparse,datetime,hashlib,importlib.metadata as metadata,json,os,shutil,subprocess,sys,zipfile
-from branding import VERSION,application_icon
+from branding import VERSION,AUTHOR,COPYRIGHT,application_icon
 ROOT=Path(__file__).resolve().parent
 SOURCE_FILES=['app.py', 'batch.py', 'batch_limits.py', 'branding.py', 'build_release.py', 'cache_maintenance.py', 'cli.py', 'core.py', 'cover_browser.py', 'cover_design.py', 'cover_sources.py', 'covers.py', 'epub_export.py', 'input_sources.py', 'layout_widgets.py', 'outline.py', 'paths.py', 'portable_smoke.py', 'preparation.py', 'preview_cache.py', 'reading_style.py', 'safe_image.py', 'safe_network.py', 'safe_regex.py', 'settings_dialog.py', 'smooth_tree.py', 'test_bulk_workflows.py', 'test_cache_maintenance.py', 'test_cover_search_states.py', 'test_cover_sources.py', 'test_cover_workspace.py', 'test_covers_hd.py', 'test_current_book_follow.py', 'test_directory_workspace.py', 'test_input_formats.py', 'test_modern_workspace.py', 'test_progress_flow.py', 'test_queue_actions.py', 'test_reading_layout.py', 'test_remaining_requirements.py', 'test_security_regressions.py', 'test_native_file_drop.py', 'ui_layout.py', 'ui_widgets.py']
-DOCS=['.gitattributes','AGENTS.md','README.md','PRIVACY.md','THIRD_PARTY_NOTICES.md','LICENSE','CHANGELOG.md','BUILDING.md','requirements.txt','requirements-build.txt','.gitignore']
+DOCS=['.gitattributes','AGENTS.md','AUTHORS.md','README.md','PRIVACY.md','THIRD_PARTY_NOTICES.md','LICENSE','CHANGELOG.md','BUILDING.md','requirements.txt','requirements-build.txt','.gitignore']
 
 def digest(path):
     with path.open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()
@@ -20,6 +20,18 @@ def source_files():
         if not path.is_file() or path.is_symlink():raise ValueError('Missing or invalid release input: '+str(path))
     return sorted(paths)
 
+def source_revision():
+    """Identify a local checkout; source archives remain buildable without Git."""
+    executable=shutil.which('git')
+    if not executable:return None
+    env={key:value for key,value in os.environ.items() if not key.startswith('GIT_')}
+    def git(*args):
+        return subprocess.run([executable,*args],cwd=ROOT,env=env,check=True,capture_output=True,timeout=15).stdout.decode('utf-8').strip()
+    try:
+        if Path(git('rev-parse','--show-toplevel')).resolve()!=ROOT:return None
+        return {'commit':git('rev-parse','HEAD'),'dirty':bool(git('status','--porcelain'))}
+    except (OSError,subprocess.SubprocessError):return None
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dist-dir',type=Path,default=ROOT.parent/'releases'/VERSION)
@@ -30,6 +42,8 @@ def main():
     stamp=datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     work=args.work_dir or ROOT.parent/'maintenance'/('build-'+VERSION+'-'+stamp)
     work=work.resolve();work.mkdir(parents=True,exist_ok=False)
+    revision=source_revision()
+    if revision and revision['dirty']:raise ValueError('Commit reviewed source changes before building a release')
     inputs=source_files()
     source_manifest={p.relative_to(ROOT).as_posix():digest(p) for p in inputs}
     engine=ROOT/'engines/kindling/kindling.exe'
@@ -38,7 +52,7 @@ def main():
     icon=work/'zbook.ico';application_icon().save(icon,sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
     version_tuple=tuple(map(int,VERSION.split('.')))+(0,)
     version_file=work/'version-info.txt'
-    version_file.write_text(f"VSVersionInfo(ffi=FixedFileInfo(filevers={version_tuple!r},prodvers={version_tuple!r},mask=0x3f,flags=0,OS=0x40004,fileType=1,subtype=0,date=(0,0)),kids=[StringFileInfo([StringTable('080404b0',[StringStruct('FileDescription','ZBook 小说转换器'),StringStruct('FileVersion',{VERSION!r}),StringStruct('ProductName','ZBook 小说转换器'),StringStruct('ProductVersion',{VERSION!r})])]),VarFileInfo([VarStruct('Translation',[2052,1200])])])",encoding='utf-8')
+    version_file.write_text(f"VSVersionInfo(ffi=FixedFileInfo(filevers={version_tuple!r},prodvers={version_tuple!r},mask=0x3f,flags=0,OS=0x40004,fileType=1,subtype=0,date=(0,0)),kids=[StringFileInfo([StringTable('080404b0',[StringStruct('FileDescription','ZBook 小说转换器'),StringStruct('FileVersion',{VERSION!r}),StringStruct('ProductName','ZBook 小说转换器'),StringStruct('ProductVersion',{VERSION!r}),StringStruct('CompanyName',{AUTHOR!r}),StringStruct('LegalCopyright',{COPYRIGHT!r})])]),VarFileInfo([VarStruct('Translation',[2052,1200])])])",encoding='utf-8')
     portable=release/('ZBook-'+VERSION+'-Windows-x64');portable.mkdir()
     command=[sys.executable,'-m','PyInstaller','--noconfirm','--onefile','--windowed','--noupx','--name','ZBook','--icon',str(icon),'--paths',str(ROOT),'--distpath',str(portable),'--workpath',str(work/'work'),'--specpath',str(work),'--add-binary',str(engine)+';engines/kindling','--version-file',str(version_file)]
     for excluded in ['PySide6','PyQt6','PyQt5','numpy','pandas','matplotlib','scipy','cv2','IPython','pytest','notebook','tkinter.test','PIL.AvifImagePlugin','PIL._avif']:
@@ -55,8 +69,8 @@ def main():
     from PyInstaller.archive.readers import CArchiveReader
     reader=CArchiveReader(str(exe));entries=list(reader.toc)
     if any(any(word in name.lower() for word in ('pyside','qt6core','webengine','calibre','kindlegen.exe','_avif')) for name in entries):raise ValueError('Unexpected bundled engine or component')
-    manifest={'version':VERSION,'built_utc':stamp,'python':sys.version.split()[0],'dependencies':{name:metadata.version(name) for name in packages},'encoder':origin,'executable':{'file':'ZBook.exe','bytes':exe.stat().st_size,'sha256':digest(exe)},'source_manifest':source_manifest,'bundled_entries':entries}
-    for name in ('README.md','PRIVACY.md','THIRD_PARTY_NOTICES.md','LICENSE','CHANGELOG.md'):shutil.copy2(ROOT/name,portable/name)
+    manifest={'version':VERSION,'author':AUTHOR,'copyright':COPYRIGHT,'license':'AGPL-3.0-only','source_revision':revision,'built_utc':stamp,'python':sys.version.split()[0],'dependencies':{name:metadata.version(name) for name in packages},'encoder':origin,'executable':{'file':'ZBook.exe','bytes':exe.stat().st_size,'sha256':digest(exe)},'source_manifest':source_manifest,'bundled_entries':entries}
+    for name in ('README.md','AUTHORS.md','PRIVACY.md','THIRD_PARTY_NOTICES.md','LICENSE','CHANGELOG.md'):shutil.copy2(ROOT/name,portable/name)
     shutil.copytree(ROOT/'licenses',portable/'licenses')
     (portable/'release-manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
     with zipfile.ZipFile(release/('ZBook-'+VERSION+'-source.zip'),'w',zipfile.ZIP_DEFLATED,compresslevel=9) as archive:

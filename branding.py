@@ -3,6 +3,8 @@ from PIL import Image, ImageDraw
 
 VERSION = '1.0.0'
 APP_NAME = 'ZBook 小说转换器'
+AUTHOR = 'huoranxuanyuan'
+COPYRIGHT = f'Copyright (C) 2026 {AUTHOR}'
 
 def application_icon():
     image = Image.new('RGBA', (256, 256), (0, 0, 0, 0))

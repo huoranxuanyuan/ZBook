@@ -1,6 +1,8 @@
 # ZBook 1.0.0
 
-此构建修复多文件拖放卡死，并将拖放限制在右侧书籍区域。版本号保留 1.0.0，发布到独立目录，原始初版包保留。
+作者：**huoranxuanyuan**。项目原创部分采用 **AGPL-3.0-only**，详见 `AUTHORS.md` 与 `LICENSE`。
+
+此 1.0.0 发布构建包含多文件拖放修复，拖放范围为右侧书籍区域。
 
 Windows 10/11 x64 小说整理与电子书转换工具。支持 TXT、Word DOC/DOCX/RTF、文字型 PDF，导出 EPUB 和 MOBI7 + KF8 双格式 MOBI。具备中文/英文分章、分卷目录、封面检索、文字封面和批量转换。
 
@@ -22,6 +24,6 @@ Windows 10/11 x64 小说整理与电子书转换工具。支持 TXT、Word DOC/D
 
 ## 开源与构建
 
-ZBook 按 GNU AGPL v3 分发，第三方组件各自保留原许可证。许可证不会限制你自行创作的书籍内容。内置 Kindling 0.46.2（MIT）；保留外部 KindleGen/Calibre 选择入口，但不附带 KindleGen。详情见 `LICENSE`、`THIRD_PARTY_NOTICES.md`、`BUILDING.md`。
+ZBook 原创部分 Copyright (C) 2026 huoranxuanyuan，按 GNU AGPL v3（AGPL-3.0-only）分发，第三方组件各自保留原许可证。许可证不会限制你自行创作的书籍内容。内置 Kindling 0.46.2（MIT）；保留外部 KindleGen/Calibre 选择入口，但不附带 KindleGen。详情见 `LICENSE`、`THIRD_PARTY_NOTICES.md`、`BUILDING.md`。
 
-发布二进制时同时提供同版本 source.zip 和 third-party-sources.zip，以及 SHA256SUMS.txt。程序未做商业代码签名；Windows 可能显示未知发布者提示。未以真机验证所有 Kindle 固件，实际设备效果请以设备为准。
+发布二进制时同时提供同版本 source.zip 和 third-party-sources.zip，以及 SHA256SUMS.txt。`release-manifest.json` 记录作者、版本、依赖、源码逐文件哈希；从 Git 仓库构建时还记录对应提交。程序未做商业代码签名；Windows 可能显示未知发布者提示。未以真机验证所有 Kindle 固件，实际设备效果请以设备为准。

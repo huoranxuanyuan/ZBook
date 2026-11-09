@@ -7,6 +7,7 @@ import re
 import tkinter as tk
 from tkinter import ttk,filedialog,messagebox
 from batch import find_converter
+from branding import APP_NAME,VERSION,AUTHOR
 from reading_style import LINE_HEIGHT,PARAGRAPH_GAP
 from ui_widgets import SlimScrollbar,SoftButton
 from layout_widgets import SmoothScrollCanvas
@@ -104,6 +105,10 @@ class SettingsDialog:
         self.external_button=ui.button(engine_actions,'选择外部编码器',self.choose_external,managed=False)
         self.builtin_button=ui.button(engine_actions,'使用内置编码器',self.use_builtin,managed=False)
         self.converter.trace_add('write',lambda *args:self.refresh_engine());self.refresh_engine()
+        row+=1
+        self.section(row,'关于 ZBook');row+=1
+        self.hint(row,f'{APP_NAME} {VERSION} · 作者 {AUTHOR}');row+=1
+        self.hint(row,'原创部分采用 AGPL-3.0-only；第三方署名与许可见随附文档。');row+=1
         win.protocol('WM_DELETE_WINDOW',self.cancel);win.bind('<Escape>',lambda event:self.cancel())
         ui.root.update_idletasks()
         self.placement=centered_geometry(ui.root,int(620*self.scale),int(740*self.scale))
