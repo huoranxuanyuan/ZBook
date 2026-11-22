@@ -161,11 +161,25 @@ class PublicAdapter(HTTPAdapter):
         return manager
 
 
+class AnonymousSiteAuth(requests.auth.AuthBase):
+    def __call__(self, request):
+        request.headers.pop("Authorization", None)
+        return request
+
+
 class PublicSession(requests.Session):
     def __init__(self):
         super().__init__()
+        # An explicit source-site policy keeps Requests from consulting netrc.
+        # Environment proxy credentials and custom CA bundles remain supported.
+        self.auth = AnonymousSiteAuth()
         for scheme in ("http://", "https://"):
             self.mount(scheme, PublicAdapter())
+
+    def resolve_redirects(self, *args, **kwargs):
+        # get() validates and closes each hop. Requests' default implementation
+        # also consumes a redirect body when it only prepares Response.next.
+        return iter(())
 
 
 def get(url, params=None, headers=None, session=None, max_bytes=8_000_000, budget=30):
@@ -202,7 +216,13 @@ def get(url, params=None, headers=None, session=None, max_bytes=8_000_000, budge
             timer.start()
             try:
                 if response.is_redirect:
-                    url = urljoin(response.url, response.headers["Location"])
+                    next_url = urljoin(response.url, response.headers["Location"])
+                    if (
+                        public_url(response.url).scheme == "https"
+                        and public_url(next_url).scheme != "https"
+                    ):
+                        raise ValueError("公开检索不接受从 HTTPS 降级到 HTTP")
+                    url = next_url
                     params = None
                     continue
                 response.raise_for_status()

@@ -2,6 +2,13 @@
 """Standalone desktop application. UI calls core/export services directly."""
 
 from __future__ import annotations
+import sys
+
+if __name__ == "__main__" and sys.argv[1:2] == ["--document-worker"]:
+    from document_worker import worker_main
+
+    worker_main(sys.argv[2:])
+    raise SystemExit(0)
 from dataclasses import asdict
 from io import BytesIO
 from pathlib import Path
@@ -19,8 +26,9 @@ import traceback
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from PIL import Image, ImageTk, ImageGrab, ImageDraw
-from core import BookJob, new_job, read_job, count_chapters
+from core import BookJob, new_job, read_job, count_chapters, import_recognition, ENCODINGS
 from input_sources import SUPPORTED_SUFFIXES
+from document_worker import document_cancellation
 from batch_limits import (
     MAX_BATCH_FILES,
     LIMIT_DESCRIPTION,
@@ -43,8 +51,7 @@ from layout_widgets import SmoothScrollCanvas
 from preview_cache import SessionPreviewCache
 from cache_maintenance import create_maintenance
 
-RULES = ("自动（中文 / 英文）", "数字标题", "自定义正则")
-ENCODINGS = ("自动", "utf-8", "gb18030", "big5", "utf-16", "utf-16le", "utf-16be")
+from chapter_rules import RULES, SUPPLEMENT
 
 
 class ZBook:
@@ -99,14 +106,14 @@ class ZBook:
             "converter": "",
             "epub": False,
             "mobi": True,
-            "auto_cover": True,
+            "auto_cover": False,
             "line_height": f"{LINE_HEIGHT:g}",
             "paragraph_gap": f"{PARAGRAPH_GAP:g}",
         }
         self.restore()
         self.settings["cover_style"] = normalize_cover_style(self.settings.get("cover_style"))
         if self.settings.get("cover_pipeline_profile") != "automatic-cover-1":
-            self.settings.setdefault("auto_cover", True)
+            self.settings.setdefault("auto_cover", False)
             self.settings["cover_pipeline_profile"] = "automatic-cover-1"
         if self.settings.get("output_profile") != "mobi-default-1":
             self.settings.update(epub=False, mobi=True, output_profile="mobi-default-1")
@@ -286,6 +293,7 @@ class ZBook:
             self.reject_import()
             return
         known = [job.path for job in self.jobs]
+        defaults = import_recognition(self.settings)
         self.import_token = object()
         token = self.import_token
         self.importing = True
@@ -309,7 +317,8 @@ class ZBook:
                         break
                     try:
                         batch.attempted.append(path)
-                        job = new_job(path)
+                        with document_cancellation(self.cancel.is_set):
+                            job = new_job(path, **defaults)
                         job.status = "正在整理目录"
                         self.events.put(("import_job", token, job))
                         count += 1
@@ -560,7 +569,7 @@ class ZBook:
                 else (
                     "文字封面 · 已手动指定"
                     if job.cover_mode == "generated"
-                    else "尚无图片封面 · 点击“一键搜索封面”或转换时自动匹配"
+                    else "尚无图片封面 · 可选本地图片、文字封面或联网搜索"
                 )
             )
         except Exception as exc:
@@ -721,8 +730,8 @@ class ZBook:
             }
             webbrowser.open(urls[engine])
 
-        self.button(footer, "Google 图片", lambda: browser("Google"), managed=False)
-        self.button(footer, "百度图片", lambda: browser("百度"), managed=False)
+        self.button(footer, "系统浏览器 · Google", lambda: browser("Google"), managed=False)
+        self.button(footer, "系统浏览器 · 百度", lambda: browser("百度"), managed=False)
         self.button(
             footer,
             "检索详情",
@@ -846,8 +855,24 @@ class ZBook:
             title="选择 MOBI 编码器", filetypes=[("电子书编码器", "*.exe")]
         )
         if path:
-            self.converter.set(path)
+            from encoder_trust import approve, identity
+
+            try:
+                selected = identity(path)
+                approve(selected)
+            except (OSError, ValueError) as exc:
+                messagebox.showerror("无法使用编码器", str(exc), parent=self.root)
+                return
+            self.converter.set(selected["path"])
             self.persist()
+
+    def copy_diagnostics(self):
+        from diagnostics import summary
+
+        text = summary(self.jobs, self.epub.get(), self.mobi.get(), self.auto_cover.get())
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        self.status.set("已复制脱敏摘要，可粘贴到问题报告。")
 
     def open_report(self):
         target = Path(self.progress_log) if self.progress_log else None
@@ -865,11 +890,18 @@ class ZBook:
     def start(self):
         if self.busy:
             return
+        if self.current and not self.save_fields():
+            messagebox.showwarning("书名为空", "请先填写书名")
+            return
         if any(j.selected and j.id in self.preparing for j in self.jobs):
             messagebox.showinfo("正在整理目录", "导入的目录正在自动整理，完成后即可转换")
             return
-        if self.current and not self.save_fields():
-            messagebox.showwarning("书名为空", "请先填写书名")
+        if any(
+            j.selected and j.rule == SUPPLEMENT and j.id in self.directory_errors for j in self.jobs
+        ):
+            messagebox.showwarning(
+                "请核对目录", "所选书籍的补充规则预览失败，请先修正规则并重新识别。"
+            )
             return
         formats = tuple(f for f, var in [("epub", self.epub), ("mobi", self.mobi)] if var.get())
         try:
@@ -1190,6 +1222,8 @@ class ZBook:
             )
             self.select_none_button.state(["disabled"] if self.busy or not count else ["!disabled"])
         if hasattr(self, "prepare_all_button"):
+            missing = sum(not (j.cover_path and Path(j.cover_path).is_file()) for j in self.jobs)
+            self.prepare_all_button.configure(text=f"全列表搜封面 · {missing} 本")
             self.prepare_all_button.state(
                 ["disabled"] if self.busy or not self.jobs else ["!disabled"]
             )
@@ -1298,6 +1332,7 @@ class ZBook:
         else:
             self.import_follow_versions.pop(job.id, None)
         self.book_cache.pop(job.id, None)
+        job.preview_patterns = None
         snapshot = copy.deepcopy(job)
         if refresh:
             self.refresh_job(job)
@@ -1310,7 +1345,12 @@ class ZBook:
                 self.analysis_slots.release()
                 return
             try:
-                book = read_job(snapshot)
+                with document_cancellation(
+                    lambda: self.analysis_shutdown.is_set()
+                    or self.cancel.is_set()
+                    or self.analysis_versions.get(job.id) != version
+                ):
+                    book = read_job(snapshot)
                 self.preview_store.save(job.id, version, book)
                 self.events.put(("analysis_ready", job.id, version, book))
             except Exception as exc:
@@ -1357,6 +1397,7 @@ class ZBook:
             else:
                 self.directory_errors.pop(job_id, None)
                 book = value
+                job.preview_patterns = book.shared_patterns
                 job.chapter_count = count_chapters(book)
                 job.status = "目录已就绪"
                 self.catalogs[job_id] = [
@@ -1508,7 +1549,7 @@ class ZBook:
         self.workspace_tabs.select(0)
         self.queue_notice.set("搜索缺失封面 · 已有图片保留")
         self.log(
-            f"一键搜索封面：{len(self.jobs)} 本 · 联网搜索、下载并应用；已有图片保留，不重新识别目录"
+            f"全列表搜封面：共 {len(self.jobs)} 本 · 联网搜索、下载并应用；已有图片保留，不重新识别目录"
         )
         snapshot = copy.deepcopy(self.jobs)
 
@@ -1929,15 +1970,10 @@ def main():
         encoding="utf8",
         format="%(asctime)s %(levelname)s %(message)s",
     )
-    if "--smoke-test" in __import__("sys").argv:
-        from portable_smoke import main as smoke
+    if sys.argv[1:2] == ["--cli"]:
+        from cli import run
 
-        try:
-            smoke()
-        except Exception:
-            logging.exception("便携版验收失败")
-            raise SystemExit(1)
-        return
+        raise SystemExit(run(sys.argv[2:]))
     root = tk.Tk()
     app = ZBook(root)
     root.mainloop()

@@ -38,4 +38,5 @@ class SessionPreviewCache:
             data["encoding"],
             data["characters"],
             data["warnings"],
+            data.get("shared_patterns"),
         )

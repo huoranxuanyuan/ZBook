@@ -81,9 +81,22 @@ def _public(url):
 
 
 def _fetch(url, referer):
-    return safe_network.get(
-        url, headers={**HEADERS, "Referer": referer}, max_bytes=10_000_000
-    ).content
+    target = safe_network.public_url(url)
+    if target.scheme == "http":
+        url = target._replace(
+            scheme="https",
+            netloc=target.hostname if ":" not in target.hostname else f"[{target.hostname}]",
+        ).geturl()
+    headers = HEADERS.copy()
+    try:
+        origin = safe_network.public_url(referer)
+        if origin.scheme == "https":
+            headers["Referer"] = origin._replace(
+                path="/", params="", query="", fragment=""
+            ).geturl()
+    except TypeError, ValueError:
+        pass
+    return safe_network.get(url, headers=headers, max_bytes=10_000_000).content
 
 
 class Attributes(HTMLParser):

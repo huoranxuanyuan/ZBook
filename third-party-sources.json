@@ -1,8 +1,8 @@
 {
   "version": "1.0.0",
   "file": "ZBook-1.0.0-third-party-sources.zip",
-  "bytes": 263438778,
-  "sha256": "dcf20ebe61f0a4920484bce14c3cb91ab0ac62c7d87019ad3d8092bf1283bc79",
+  "bytes": 317735348,
+  "sha256": "471f1846df46ff0e9dd19726822ba389bd9006497f15a772fddf0f8c74263ccc",
   "member_manifest": "third-party-sources/manifest.json",
   "description": "Original third-party source archives with upstream URLs and per-file hashes; distributed as a release asset."
 }

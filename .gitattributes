@@ -10,3 +10,7 @@
 *.jpeg binary
 *.bmp binary
 *.webp binary
+# Upstream license text keeps its original whitespace and line endings.
+licenses/*.txt -whitespace
+# The original PyInstaller RST uses a seven-character underline for its heading.
+licenses/pyinstaller.txt conflict-marker-size=32

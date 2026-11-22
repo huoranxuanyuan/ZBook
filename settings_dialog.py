@@ -2,20 +2,23 @@
 """Transactional settings and parent-relative placement for ZBook."""
 
 from pathlib import Path
+import os
 import ctypes
 from ctypes import wintypes
-import re
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from batch import find_converter
+from encoder_trust import approve, find_converter, identity
 from branding import APP_NAME, VERSION, AUTHOR
 from reading_style import LINE_HEIGHT, PARAGRAPH_GAP
 from ui_widgets import SlimScrollbar, SoftButton
 from layout_widgets import SmoothScrollCanvas
 
+from chapter_rules import RULES, SUPPLEMENT, SupplementalChapters, editable_rules
+from core import ENCODINGS, import_recognition
+from safe_regex import HeadingPattern
+
 COVER_STYLES = {"现代青绿": "modern", "暖调暮橙": "warm"}
-RULES = ("自动（中文 / 英文）", "数字标题", "自定义正则")
-ENCODINGS = ("自动", "utf-8", "gb18030", "big5", "utf-16", "utf-16le", "utf-16be")
+IMPORT_SCOPE = "以后导入的书"
 
 
 def work_area(parent):
@@ -76,7 +79,8 @@ def validate_converter(value):
 class SettingsDialog:
     def __init__(self, ui, show=True):
         self.ui = ui
-        self.target = ui.current_job()
+        self.book = ui.current_job()
+        self.target = self.book
         self.scale = ui.ui_scale
         self.window = tk.Toplevel(ui.root)
         win = self.window
@@ -84,12 +88,24 @@ class SettingsDialog:
         win.title("ZBook 设置")
         win.configure(bg="#FFFFFF")
         win.transient(ui.root)
-        self.encoding = tk.StringVar(win, value=self.target.encoding if self.target else "自动")
-        self.rule = tk.StringVar(win, value=self.target.rule if self.target else RULES[0])
-        self.regex = tk.StringVar(win, value=self.target.custom_regex if self.target else "")
+        self.drafts = {IMPORT_SCOPE: import_recognition(ui.settings)}
+        self.active_scope = IMPORT_SCOPE
+        if self.book is not None:
+            self.active_scope = "当前书籍 · " + self.book.title
+            self.drafts[self.active_scope] = {
+                "encoding": self.book.encoding,
+                "rule": self.book.rule,
+                "custom_regex": self.book.custom_regex,
+            }
+        self.scope = tk.StringVar(win, value=self.active_scope)
+        initial = self.drafts[self.active_scope]
+        self.encoding = tk.StringVar(win, value=initial["encoding"])
+        self.rule = tk.StringVar(win, value=initial["rule"])
+        self.regex = tk.StringVar(win, value=initial["custom_regex"])
         self.line_height = tk.StringVar(win, value=ui.line_height.get())
         self.gap = tk.StringVar(win, value=ui.gap.get())
         self.auto_cover = tk.BooleanVar(win, value=ui.auto_cover.get())
+        self.selected_encoder = None
         self.converter = tk.StringVar(win, value=ui.converter.get())
         style = ui.settings.get("cover_style", "modern")
         self.cover_style = tk.StringVar(
@@ -143,27 +159,31 @@ class SettingsDialog:
         row = 0
         self.section(row, "书籍识别")
         row += 1
-        hint = (
-            "仅作用于当前书籍：" + self.target.title
-            if self.target
-            else "先选择一本书，再修改识别设置。"
-        )
-        self.hint(row, hint)
+        if self.book is not None:
+            scope = self.combo(row, "应用范围", self.scope, (self.active_scope, IMPORT_SCOPE))
+            scope.bind("<<ComboboxSelected>>", self.change_scope)
+            self.controls["scope"] = scope
+            row += 1
+            self.hint(row, "下面三项保存到选定范围。TXT 编码用于纯文本书籍。")
+        else:
+            self.hint(row, "新书默认设置 · 保存后用于以后导入的书。")
         row += 1
         self.controls["encoding"] = self.combo(row, "TXT 编码", self.encoding, ENCODINGS)
         row += 1
-        if not self.target or Path(self.target.path).suffix.lower() != ".txt":
-            self.controls["encoding"].configure(state="disabled")
+        self.update_encoding_state()
         self.controls["rule"] = self.combo(row, "章节规则", self.rule, RULES)
         row += 1
         self.controls["regex"] = self.entry(row, "自定义正则", self.regex)
         row += 1
-        self.hint(row, "自定义规则匹配完整章节标题；原文中的分卷仍自动识别。")
+        self.hint(
+            row,
+            "直接输入正则会启用“自动＋补充规则”，例如 幕间·.{1,30}。选择“自定义正则”可替换普通分章规则。",
+        )
         row += 1
-        self.rule.trace_add("write", lambda *args: self.update_rule_state())
-        self.update_rule_state()
-        if not self.target:
-            self.controls["rule"].configure(state="disabled")
+        self.rules_button = SoftButton(self.body, text="编辑共用补充规则", command=self.edit_rules)
+        self.rules_button.grid(row=row, column=0, columnspan=2, sticky="w", pady=(2, 6))
+        row += 1
+        self.regex.trace_add("write", self.pattern_edited)
         self.section(row, "阅读与封面")
         row += 1
         self.controls["line_height"] = self.entry(row, "正文行距", self.line_height)
@@ -180,7 +200,7 @@ class SettingsDialog:
         self.reset_button.grid(row=row, column=1, sticky="w", pady=5)
         row += 1
         self.controls["auto_cover"] = ttk.Checkbutton(
-            self.body, text="转换前自动匹配缺失封面（推荐）", variable=self.auto_cover
+            self.body, text="允许转换时联网匹配缺失封面", variable=self.auto_cover
         )
         self.controls["auto_cover"].grid(row=row, column=0, columnspan=2, sticky="w", pady=(10, 4))
         row += 1
@@ -218,7 +238,7 @@ class SettingsDialog:
         row += 1
         self.hint(row, f"{APP_NAME} {VERSION} · 作者 {AUTHOR}")
         row += 1
-        self.hint(row, "原创部分采用 AGPL-3.0-only；第三方署名与许可见随附文档。")
+        self.hint(row, "原创部分采用 AGPL-3.0-only。第三方署名见 THIRD_PARTY_NOTICES.md。")
         row += 1
         win.protocol("WM_DELETE_WINDOW", self.cancel)
         win.bind("<Escape>", lambda event: self.cancel())
@@ -291,10 +311,43 @@ class SettingsDialog:
         for label in self.help_labels:
             label.configure(wraplength=max(80, event.width - int(12 * self.scale)))
 
-    def update_rule_state(self):
-        self.controls["regex"].configure(
-            state="normal" if self.target and self.rule.get() == "自定义正则" else "disabled"
-        )
+    def edit_rules(self):
+        try:
+            os.startfile(str(editable_rules()))
+        except OSError as exc:
+            messagebox.showerror("无法打开补充规则", str(exc), parent=self.window)
+
+    def recognition_values(self):
+        return {
+            "encoding": self.encoding.get(),
+            "rule": self.rule.get(),
+            "custom_regex": self.regex.get(),
+        }
+
+    def update_encoding_state(self):
+        is_txt = self.target is None or Path(self.target.path).suffix.lower() == ".txt"
+        self.controls["encoding"].configure(state="readonly" if is_txt else "disabled")
+
+    def change_scope(self, _event=None):
+        chosen = self.scope.get()
+        if chosen == self.active_scope:
+            return
+        self.drafts[self.active_scope] = self.recognition_values()
+        values = self.drafts[chosen]
+        self.target = None if chosen == IMPORT_SCOPE else self.book
+        self.encoding.set(values["encoding"])
+        self.rule.set(values["rule"])
+        self.regex.set(values["custom_regex"])
+        self.active_scope = chosen
+        self.update_encoding_state()
+
+    def pattern_edited(self, *_):
+        if (
+            self.scope.get() == self.active_scope
+            and self.regex.get().strip()
+            and self.rule.get() not in (SUPPLEMENT, "自定义正则")
+        ):
+            self.rule.set(SUPPLEMENT)
 
     def reset_reading(self):
         self.line_height.set(f"{LINE_HEIGHT:g}")
@@ -326,11 +379,14 @@ class SettingsDialog:
             else:
                 self.engine_text.set("外部编码器路径已失效，请重新选择或恢复内置。")
         else:
-            engine = find_converter("")
+            try:
+                engine = find_converter("")
+            except OSError, ValueError:
+                engine = ""
             self.engine_text.set(
                 "当前使用内置 Kindling（MOBI7 + KF8）"
                 if engine and Path(engine).name.lower() == "kindling.exe"
-                else "当前使用默认 Calibre" if engine else "未找到可用编码器"
+                else "内置编码器缺失或校验失败，请重新解压或选择外部编码器"
             )
 
     def choose_external(self):
@@ -343,12 +399,14 @@ class SettingsDialog:
             return
         try:
             value = validate_converter(path)
-        except ValueError as exc:
+            self.selected_encoder = identity(value)
+        except (OSError, ValueError) as exc:
             messagebox.showerror("无法使用编码器", str(exc), parent=self.window)
             return
         self.converter.set(value)
 
     def use_builtin(self):
+        self.selected_encoder = None
         self.converter.set("")
 
     def apply(self):
@@ -360,19 +418,19 @@ class SettingsDialog:
                 raise ValueError("行距和段距请输入有效数字。") from exc
             if not 0.9 <= line_height <= 3 or not 0 <= gap <= 3:
                 raise ValueError("行距需为 0.9～3，段距需为 0～3。")
-            if self.target and self.rule.get() == "自定义正则":
+            if self.rule.get() == "自定义正则":
                 if not self.regex.get().strip():
                     raise ValueError("请填写自定义章节正则。")
-                if len(self.regex.get()) > 300:
-                    raise ValueError("自定义正则最多 300 个字符。")
-                try:
-                    from safe_regex import HeadingPattern
-
-                    HeadingPattern(self.regex.get())
-                except re.error as exc:
-                    raise ValueError("自定义正则无效：" + str(exc)) from exc
+                HeadingPattern(self.regex.get())
+            if self.rule.get() == SUPPLEMENT:
+                SupplementalChapters(self.regex.get())
             converter = validate_converter(self.converter.get())
-        except (ValueError, TypeError) as exc:
+            if converter:
+                if self.selected_encoder and self.selected_encoder["path"] == converter:
+                    approve(self.selected_encoder)
+                else:
+                    find_converter(converter)
+        except (OSError, ValueError, TypeError) as exc:
             messagebox.showerror("设置未保存", str(exc), parent=self.window)
             return False
         target = self.target
@@ -387,15 +445,19 @@ class SettingsDialog:
             )
             target.rule = self.rule.get()
             target.custom_regex = self.regex.get()
-            self.ui.encoding.set(target.encoding)
-            self.ui.rule.set(target.rule)
-            self.ui.regex.set(target.custom_regex)
+            if self.ui.current_job() is target:
+                self.ui.encoding.set(target.encoding)
+                self.ui.rule.set(target.rule)
+                self.ui.regex.set(target.custom_regex)
             if (
                 changed != (target.encoding, target.rule, target.custom_regex)
+                or target.rule == SUPPLEMENT
                 or target.id not in self.ui.catalogs
             ):
                 self.ui.invalidate_analysis(target.id)
                 self.ui.prepare_job(target)
+        else:
+            self.ui.settings["import_recognition"] = self.recognition_values()
         self.ui.line_height.set(f"{line_height:g}")
         self.ui.gap.set(f"{gap:g}")
         self.ui.auto_cover.set(self.auto_cover.get())

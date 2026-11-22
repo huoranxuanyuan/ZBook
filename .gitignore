@@ -1,3 +1,35 @@
+# Local tests, sample books, maintenance documents and editor settings.
+/test_*.py
+/tests/
+/examples/
+/docs/
+/local-dev/
+/AGENTS.md
+/portable_smoke.py
+/tools/check.py
+/tools/release.py
+/requirements-dev.txt
+/pyproject.toml
+/.editorconfig
+/.github/ISSUE_TEMPLATE/
+*.md
+!/README.md
+!/THIRD_PARTY_NOTICES.md
+*.txt
+!/requirements.txt
+!/requirements-build.txt
+!/release-files.txt
+!/licenses/*.txt
+*.zip
+/assets/branding/app-dark*
+/assets/branding/fullbleed*
+/assets/branding/asset-manifest.json
+/assets/branding/mark.svg
+*.doc
+*.docx
+*.rtf
+*.pdf
+
 # Local runtime data, generated releases and build environments.
 /data/
 /archive/
@@ -9,6 +41,10 @@
 /toolchain/
 /maintenance/
 /ZBook*.exe
+*.epub
+*.mobi
+*.azw
+*.azw3
 
 # Databases, journals and data dumps. SQL source/migrations remain trackable.
 *.db
@@ -40,6 +76,8 @@ password*.txt
 password*.json
 *.key
 *.pem
+!/release-public.pem
+/.wheels/
 *.p12
 *.pfx
 *.keystore

@@ -1,0 +1,92 @@
+{
+  "Pillow": {
+    "version": "13.0.0",
+    "file": "pillow-13.0.0-cp314-cp314-win_amd64.whl",
+    "sha256": "f7cbb7a64e7ec664775195e4f81923bc8a93d9451b963f844e59118f63147a7a"
+  },
+  "requests": {
+    "version": "2.33.1",
+    "file": "requests-2.33.1-py3-none-any.whl",
+    "sha256": "4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a"
+  },
+  "urllib3": {
+    "version": "2.8.0",
+    "file": "urllib3-2.8.0-py3-none-any.whl",
+    "sha256": "0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3"
+  },
+  "certifi": {
+    "version": "2026.10.23",
+    "file": "certifi-2026.10.23-py3-none-any.whl",
+    "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1"
+  },
+  "idna": {
+    "version": "3.15",
+    "file": "idna-3.15-py3-none-any.whl",
+    "sha256": "048adeaf8c2d788c40fee287673ccaa74c24ffd8dcf09ffa555a2fbb59f10ac8"
+  },
+  "charset-normalizer": {
+    "version": "3.4.7",
+    "file": "charset_normalizer-3.4.7-cp314-cp314-win_amd64.whl",
+    "sha256": "92a0a01ead5e668468e952e4238cccd7c537364eb7d851ab144ab6627dbbe12f"
+  },
+  "PyMuPDF-Lite": {
+    "version": "2.1",
+    "file": "pymupdf_lite-2.1-cp311-abi3-win_amd64.whl",
+    "sha256": "6fddae7f4b7514140f6307704120379cb05acf389d1bc13ca91efd08fdda714a"
+  },
+  "olefile": {
+    "version": "0.47",
+    "file": "olefile-0.47-py2.py3-none-any.whl",
+    "sha256": "543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f"
+  },
+  "striprtf": {
+    "version": "0.0.35",
+    "file": "striprtf-0.0.35-py3-none-any.whl",
+    "sha256": "2c8e207f47c9de355374d604167b17c99a06eb4d238e07cfba772f8669db60e4"
+  },
+  "regex": {
+    "version": "2026.11.7",
+    "file": "regex-2026.11.7-cp314-cp314-win_amd64.whl",
+    "sha256": "5683e6901d1f0b091d4e222b590b01c2f463aa46133b4eec4b4d0ace37422526"
+  },
+  "PySocks": {
+    "version": "1.7.1",
+    "file": "PySocks-1.7.1-py3-none-any.whl",
+    "sha256": "2725bd0a9925919b9b51739eea5f9e2bae91e83288108a9ad338b2e3a4435ee5"
+  },
+  "pyinstaller": {
+    "version": "6.22.3",
+    "file": "pyinstaller-6.22.3-py3-none-win_amd64.whl",
+    "sha256": "500bd58c7bf7e584a8435adccbd763a0b918d5c12b08d74ff50fd79b2915458b"
+  },
+  "pyinstaller-hooks-contrib": {
+    "version": "2026.9",
+    "file": "pyinstaller_hooks_contrib-2026.9-py3-none-any.whl",
+    "sha256": "fb3e67dd64122561724c48ad0366ac9e8c16e638b63bf7d85de03bf3fdbf06c3"
+  },
+  "altgraph": {
+    "version": "0.17.5",
+    "file": "altgraph-0.17.5-py2.py3-none-any.whl",
+    "sha256": "f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597"
+  },
+  "packaging": {
+    "version": "26.3",
+    "file": "packaging-26.3-py3-none-any.whl",
+    "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c"
+  },
+  "pefile": {
+    "version": "2024.8.26",
+    "file": "pefile-2024.8.26-py3-none-any.whl",
+    "sha256": "76f8b485dcd3b1bb8166f1128d395fa3d87af26360c2358fb75b80019b957c6f"
+  },
+  "pywin32-ctypes": {
+    "version": "0.2.3",
+    "file": "pywin32_ctypes-0.2.3-py3-none-any.whl",
+    "sha256": "8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8"
+  },
+  "setuptools": {
+    "version": "84.2.1",
+    "file": "setuptools-84.2.1-py3-none-any.whl",
+    "sha256": "ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2"
+  }
+}

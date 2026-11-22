@@ -39,9 +39,15 @@ def _sources(values, cancel, errors):
                     for entry in entries:
                         if cancel is not None and cancel.is_set():
                             return
+                        # Explicit paths may be links. Recursive discovery stays in
+                        # the selected tree, including on Windows junction volumes.
+                        if entry.is_symlink() or (
+                            os.name == "nt" and os.path.isjunction(entry.path)
+                        ):
+                            continue
                         if entry.is_dir(follow_symlinks=False):
                             yield from walk(Path(entry.path), depth + 1)
-                        elif entry.is_file():
+                        elif entry.is_file(follow_symlinks=False):
                             yield from walk(Path(entry.path), depth + 1)
             elif (
                 path.suffix.lower() in SUPPORTED_SUFFIXES

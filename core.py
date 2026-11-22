@@ -9,6 +9,10 @@ import re
 import unicodedata
 import uuid
 
+from chapter_rules import RULES
+
+ENCODINGS = ("自动", "utf-8", "gb18030", "big5", "utf-16", "utf-16le", "utf-16be")
+
 NUM = r"0-9０-９零〇○一二三四五六七八九十百千万亿两壹贰叁肆伍陆柒捌玖拾佰仟"
 NUMBERED = re.compile(rf"^第\s*[{NUM}]+\s*([章回节卷集部篇])(?:\s*.*)?$")
 CHAPTER_MARKER = re.compile(rf"第\s*([{NUM}]+)\s*([章回节])")
@@ -46,6 +50,7 @@ class ParsedBook:
     encoding: str
     characters: int
     warnings: list[str] = field(default_factory=list)
+    shared_patterns: list[str] | None = None
 
 
 def count_chapters(book):
@@ -75,6 +80,7 @@ class BookJob:
     notes: list[str] = field(default_factory=list)
     chapter_count: int = 0
     chapter_titles: dict[str, str] = field(default_factory=dict)
+    preview_patterns: list[str] | None = None
 
     def to_dict(self):
         return asdict(self)
@@ -130,7 +136,7 @@ def parse_metadata(filename, header=""):
         confidence = "待核对"
         notes.append("将书名后、版本标记外的文字识别为作者，请核对")
     if not bracket and not explicit and not author:
-        # e.g. 暴风城打工实录（完结全本）又一个鱼雷
+        # 书名（版本标记）后面的短文本可能是作者。
         m = re.fullmatch(r"(.+?)[（(]([^）)]+)[）)]\s*([^\s（()）]{1,24})", stem)
         if m and EDITION.search(m.group(2)):
             title, author = m.group(1).strip(), m.group(3).strip()
@@ -217,7 +223,7 @@ def decode_bytes(data, encoding="自动"):
                     return text, enc
             except UnicodeError:
                 pass
-        raise ValueError("检测到空字节，无法可靠识别编码；请手动选择 UTF-16LE 或 UTF-16BE")
+        raise ValueError("检测到空字节，无法可靠识别编码；请在设置中选择 UTF-16LE 或 UTF-16BE")
     for enc in ("utf-8", "gb18030"):
         try:
             return data.decode(enc), enc
@@ -228,7 +234,7 @@ def decode_bytes(data, encoding="自动"):
     detected = from_bytes(data).best()
     if detected and detected.encoding and detected.chaos < 0.1:
         return str(detected), detected.encoding
-    raise ValueError("无法可靠识别文本编码，请在右侧手动选择；没有用替换字符吞掉原文")
+    raise ValueError("无法可靠识别文本编码，请在设置中手动选择 TXT 编码")
 
 
 VOLUME_TOKEN = rf"(?:第\s*[{NUM}]+\s*(?:部分|卷|集|部|篇)|卷\s*[{NUM}]+|[上中下序终]卷)"
@@ -390,6 +396,7 @@ def parse_text(
     rule="自动（中文 / 英文）",
     custom_regex="",
     heading_levels=None,
+    shared_patterns=None,
 ):
     # CRCRLF occurs in several real files. Normalize line boundaries, not wording.
     text = text.replace("\r\r\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
@@ -409,7 +416,17 @@ def parse_text(
     current_level = 1
     has_volume = False
     lines = text.split("\n")
-    kinds = [heading_kind(line, rule, custom) for line in lines]
+    from chapter_rules import SUPPLEMENT, SupplementalChapters
+
+    additions = (
+        SupplementalChapters(custom_regex, snapshot=shared_patterns) if rule == SUPPLEMENT else None
+    )
+    kinds = []
+    for line in lines:
+        kind = heading_kind(line, rule, custom)
+        if kind is None and additions is not None and additions.matches(line):
+            kind = "chapter"
+        kinds.append(kind)
     accepted_volumes = volume_boundaries(lines, kinds, heading_levels)
     for number, line in enumerate(lines, 1):
         kind = kinds[number - 1]
@@ -479,7 +496,14 @@ def parse_text(
         warnings.append("章节密度偏高，可能把正文误识别为标题，请预览目录")
     if any(len(c.text) > 180000 for c in chapters):
         warnings.append("存在较长章节，导出时会自动分页，保留全部正文")
-    return ParsedBook(metadata, chapters, encoding, len(text), warnings)
+    return ParsedBook(
+        metadata,
+        chapters,
+        encoding,
+        len(text),
+        warnings,
+        additions.shared_patterns if additions else None,
+    )
 
 
 def document_metadata(path, document):
@@ -494,7 +518,13 @@ def document_metadata(path, document):
 
 
 def read_book(
-    path, encoding="自动", rule="自动（中文 / 英文）", custom_regex="", title=None, author=None
+    path,
+    encoding="自动",
+    rule="自动（中文 / 英文）",
+    custom_regex="",
+    title=None,
+    author=None,
+    shared_patterns=None,
 ):
     path = Path(path)
     document = None
@@ -518,14 +548,35 @@ def read_book(
     if not metadata.title:
         raise ValueError("书名不能为空")
     book = parse_text(
-        text, metadata, detected, rule, custom_regex, document.headings if document else None
+        text,
+        metadata,
+        detected,
+        rule,
+        custom_regex,
+        document.headings if document else None,
+        shared_patterns,
     )
     if document:
         book.warnings = list(dict.fromkeys(document.warnings + book.warnings))
     return book
 
 
-def new_job(path):
+def import_recognition(settings):
+    """Read only supported import preferences, including pre-preference sessions."""
+    options = settings.get("import_recognition")
+    if not isinstance(options, dict):
+        options = {}
+    encoding = options.get("encoding")
+    rule = options.get("rule")
+    pattern = options.get("custom_regex")
+    return {
+        "encoding": encoding if encoding in ENCODINGS else "自动",
+        "rule": rule if rule in RULES else RULES[0],
+        "custom_regex": pattern if isinstance(pattern, str) else "",
+    }
+
+
+def new_job(path, *, encoding="自动", rule=RULES[0], custom_regex=""):
     path = Path(path).resolve()
     if path.suffix.lower() == ".txt":
         with path.open("rb") as f:
@@ -536,18 +587,29 @@ def new_job(path):
             if data.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE))
             else ("utf-8-sig", "gb18030")
         )
+        if encoding != "自动":
+            choices = (encoding,)
         for enc in choices:
             try:
                 header = codecs.getincrementaldecoder(enc)("strict").decode(data, final=False)
                 break
             except UnicodeError:
                 continue
-        meta = parse_metadata(path.name, header)
+        meta = parse_metadata(path.name, header.lstrip("\ufeff"))
     else:
         from input_sources import read_document
 
+        encoding = "自动"
         meta = document_metadata(path, read_document(path, limit=16000))
-    job = BookJob(str(path), meta.title, meta.author, notes=meta.notes)
+    job = BookJob(
+        str(path),
+        meta.title,
+        meta.author,
+        encoding=encoding,
+        rule=rule,
+        custom_regex=custom_regex,
+        notes=meta.notes,
+    )
     for candidate in (
         path.with_suffix(".jpg"),
         path.with_suffix(".png"),
@@ -561,7 +623,7 @@ def new_job(path):
     return job
 
 
-def read_job(job):
+def read_job(job, *, use_preview_rules=False):
     book = read_book(
         job.path,
         job.encoding,
@@ -569,6 +631,7 @@ def read_job(job):
         job.custom_regex,
         job.title,
         job.author if job.author or Path(job.path).suffix.lower() == ".txt" else None,
+        shared_patterns=job.preview_patterns if use_preview_rules else None,
     )
     for chapter in book.chapters:
         if chapter.kind != "volume":

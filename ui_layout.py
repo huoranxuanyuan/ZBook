@@ -4,7 +4,7 @@
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
-from branding import APP_NAME, VERSION, application_icon
+from branding import APP_NAME, VERSION, application_icon, brand_mark
 from ui_widgets import SoftButton, SlimScrollbar, NativeFileDrop
 from smooth_tree import PixelTreeview
 from layout_widgets import (
@@ -27,10 +27,8 @@ def build_ui(self):
     self.ui_scale = scale
     root.title(f"{APP_NAME} {VERSION}")
     self.branding_icons = [
-        ImageTk.PhotoImage(
-            application_icon().resize((size, size), Image.Resampling.LANCZOS), master=root
-        )
-        for size in (16, 32, 48, 64)
+        ImageTk.PhotoImage(application_icon(size), master=root)
+        for size in (16, 20, 24, 32, 40, 48, 64, 96, 128)
     ]
     root.iconphoto(True, *self.branding_icons)
     screen_w, screen_h = root.winfo_screenwidth(), root.winfo_screenheight()
@@ -134,6 +132,10 @@ def build_ui(self):
         padx=int(24 * scale),
         pady=(int((10 if self.compact else 16) * scale), int((10 if self.compact else 14) * scale)),
     )
+    mark_size = max(24, int((26 if self.compact else 30) * scale))
+    self.header_brand_icon = ImageTk.PhotoImage(brand_mark(mark_size), master=root)
+    self.header_brand_label = tk.Label(header, image=self.header_brand_icon, bg=BG)
+    self.header_brand_label.pack(side="left", padx=(0, int(9 * scale)))
     tk.Label(
         header, text="ZBook", bg=BG, fg=INK, font=("Segoe UI", 20 if self.compact else 22, "bold")
     ).pack(side="left")
@@ -274,7 +276,7 @@ def build_ui(self):
     self.organize_all_button.grid(row=0, column=0, sticky="ew", padx=(0, int(6 * scale)))
     self.prepare_all_button = SoftButton(
         batch_actions,
-        text="一键搜索封面",
+        text="全列表搜封面",
         command=self.prepare_all,
         width=120,
         height=34,
@@ -609,6 +611,9 @@ def build_ui(self):
     tk.Label(
         log_tools, text="本次转换进度", bg="#FFFFFF", fg=MUTED, font=("Microsoft YaHei UI", 9)
     ).pack(side="left")
+    self.button(
+        log_tools, "复制脱敏摘要", self.copy_diagnostics, pack={"side": "right"}, managed=False
+    )
     self.button(log_tools, "打开日志", self.open_report, pack={"side": "right"}, managed=False)
     logs.columnconfigure(0, weight=1)
     logs.rowconfigure(1, weight=1)

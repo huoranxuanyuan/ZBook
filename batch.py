@@ -17,11 +17,12 @@ import uuid
 from core import BookJob, read_job, safe_filename, count_chapters
 from batch_limits import validate_batch
 from epub_export import write_epub
+from document_worker import document_cancellation
 
-from paths import ROOT, APP_ROOT
+from paths import ROOT
+from encoder_trust import expected_encoder, find_converter, verified_encoder
 from reading_style import LINE_HEIGHT, PARAGRAPH_GAP
 from cache_maintenance import create_maintenance, verify_published_files
-import sys
 
 
 @dataclass
@@ -33,19 +34,7 @@ class Options:
     line_height: float = LINE_HEIGHT
     paragraph_gap: float = PARAGRAPH_GAP
     cover_style: str = "modern"
-
-
-def find_converter(configured=""):
-    bundle = Path(getattr(sys, "_MEIPASS", str(APP_ROOT)))
-    choices = [
-        configured,
-        bundle / "engines" / "kindling" / "kindling.exe",
-        APP_ROOT / "engines" / "kindling" / "kindling.exe",
-        shutil.which("ebook-convert"),
-        r"C:\Program Files\Calibre2\ebook-convert.exe",
-        r"C:\Program Files (x86)\Calibre2\ebook-convert.exe",
-    ]
-    return next((str(Path(p).resolve()) for p in choices if p and Path(p).is_file()), "")
+    explicit_encoder: dict | None = None
 
 
 def publish(source, output, stem, extension):
@@ -77,7 +66,8 @@ def publish(source, output, stem, extension):
             shutil.move(str(staging), str(source.parent / staging.name))
 
 
-def convert_mobi(epub, target, converter, cancel, log_path, on_progress=None):
+def convert_mobi(epub, target, selected, cancel, log_path, on_progress=None):
+    converter = selected["path"]
     is_kindlegen = Path(converter).name.lower() == "kindlegen.exe"
     is_kindling = Path(converter).name.lower() in ("kindling.exe", "kindling-cli-windows.exe")
     if is_kindling:
@@ -140,9 +130,10 @@ def convert_mobi(epub, target, converter, cancel, log_path, on_progress=None):
         env.pop(key, None)
     with Path(log_path).open("w", encoding="utf8") as log:
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-        proc = subprocess.Popen(
-            command, stdout=log, stderr=subprocess.STDOUT, creationflags=flags, env=env
-        )
+        with verified_encoder(selected):
+            proc = subprocess.Popen(
+                command, stdout=log, stderr=subprocess.STDOUT, creationflags=flags, env=env
+            )
         start = time.monotonic()
         last_notice = start
         while proc.poll() is None:
@@ -175,11 +166,11 @@ def _run_batch(jobs, options, emit=None, cancel=None, maintenance=None):
     cancel = cancel or threading.Event()
     if not options.formats or set(options.formats) - {"epub", "mobi"}:
         raise ValueError("请选择 EPUB 或 MOBI")
-    converter = find_converter(options.converter)
-    if "mobi" in options.formats and not converter:
-        raise ValueError(
-            "未找到 MOBI 引擎，请使用完整便携版，或在设置中指定 Kindling / KindleGen / Calibre"
-        )
+    converter = None
+    if "mobi" in options.formats:
+        converter = expected_encoder(options.converter, options.explicit_encoder)
+        with verified_encoder(converter):
+            pass
     output = Path(options.output).resolve()
     selected = [job for job in jobs if job.selected]
     if not selected:
@@ -218,7 +209,8 @@ def _run_batch(jobs, options, emit=None, cancel=None, maintenance=None):
         }
         phase(job, index, "读取与分章")
         try:
-            book = read_job(job)
+            with document_cancellation(cancel.is_set):
+                book = read_job(job, use_preview_rules=True)
             result["encoding"] = book.encoding
             result["chapters"] = count_chapters(book)
             result["warnings"] = list(dict.fromkeys(job.notes + book.warnings))
@@ -281,7 +273,7 @@ def _run_batch(jobs, options, emit=None, cancel=None, maintenance=None):
                     work / "encoder.log",
                     lambda stage: phase(job, index, stage),
                 )
-                result["encoder"] = Path(converter).name
+                result["encoder"] = Path(converter["path"]).name
                 if encoder_code == 1:
                     result["warnings"].append(
                         "编码器返回兼容提示，已校验生成的 MOBI；详情见 encoder.log"

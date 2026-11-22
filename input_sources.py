@@ -11,6 +11,7 @@ import statistics
 import struct
 import zipfile
 import xml.etree.ElementTree as ET
+from document_worker import MAX_CHARS, MAX_LINES, MAX_PAGES, read_isolated
 
 SUPPORTED_SUFFIXES = frozenset((".txt", ".docx", ".doc", ".rtf", ".pdf"))
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
@@ -26,31 +27,52 @@ class DocumentText:
 
 
 def source_files(values):
-    result = []
-    seen = set()
-    for value in values:
-        path = Path(value)
-        candidates = sorted(path.rglob("*")) if path.is_dir() else [path]
-        for candidate in candidates:
-            if (
-                candidate.is_file()
-                and candidate.suffix.lower() in SUPPORTED_SUFFIXES
-                and not candidate.name.startswith("~$")
-            ):
-                candidate = candidate.resolve()
-                key = str(candidate).casefold()
-                if key not in seen:
-                    seen.add(key)
-                    result.append(candidate)
-    return result
+    from batch_limits import _sources
+
+    return sorted(set(_sources(values, None, [])))
 
 
-def _visible_text(node):
+def _attr(node, name, default=""):
+    return node.get(W + name, default) if node is not None else default
+
+
+def _enabled(element):
+    return element is not None and _attr(element, "val", "true").lower() not in (
+        "0",
+        "false",
+        "off",
+    )
+
+
+def _visible_text(node, visibility, references):
+    base, defaults, toggles = visibility
+    style = _attr(node.find(W + "pPr/" + W + "pStyle"), "val", defaults.get("paragraph", ""))
+    paragraph_hidden = base ^ toggles.get(style, False)
     parts = []
 
     def walk(item):
-        if item.tag in (W + "del", W + "delText", W + "instrText"):
+        if item.tag in (
+            W + "rPr",
+            W + "pPr",
+            W + "del",
+            W + "moveFrom",
+            W + "delText",
+            W + "instrText",
+        ):
             return
+        if item.tag == W + "r":
+            props = item.find(W + "rPr")
+            character = _attr(
+                item.find(W + "rPr/" + W + "rStyle"), "val", defaults.get("character", "")
+            )
+            direct = props.find(W + "vanish") if props is not None else None
+            hidden = (
+                _enabled(direct)
+                if direct is not None
+                else paragraph_hidden ^ toggles.get(character, False)
+            )
+            if hidden:
+                return
         if item.tag == W + "t":
             parts.append(item.text or "")
         elif item.tag == W + "tab":
@@ -58,7 +80,9 @@ def _visible_text(node):
         elif item.tag in (W + "br", W + "cr"):
             parts.append("\n")
         elif item.tag in (W + "footnoteReference", W + "endnoteReference"):
-            parts.append("[注" + item.get(W + "id", "") + "]")
+            note_id = item.get(W + "id", "")
+            references.add((item.tag.removeprefix(W).removesuffix("Reference"), note_id))
+            parts.append("[注" + note_id + "]")
         else:
             for child in item:
                 walk(child)
@@ -70,11 +94,15 @@ def _visible_text(node):
 def _word_styles(package):
     levels = {}
     parents = {}
+    defaults, direct, toggles = {}, {}, {}
     if "word/styles.xml" not in package.namelist():
-        return levels
+        return levels, (False, defaults, toggles)
     root = ET.fromstring(package.read("word/styles.xml"))
     for style in root.findall(W + "style"):
         key = style.get(W + "styleId", "")
+        if _attr(style, "default").lower() in ("1", "true", "on"):
+            defaults[_attr(style, "type")] = key
+        direct[key] = _enabled(style.find(W + "rPr/" + W + "vanish"))
         outline = style.find(W + "pPr/" + W + "outlineLvl")
         name = style.find(W + "name")
         name = name.get(W + "val", "") if name is not None else ""
@@ -95,7 +123,22 @@ def _word_styles(package):
         for key, parent in parents.items():
             if key not in levels and parent in levels:
                 levels[key] = levels[parent]
-    return levels
+    for key in direct:
+        chain = []
+        seen = set()
+        current = key
+        while current in direct and current not in toggles:
+            if current in seen:
+                raise ValueError("Word 样式继承循环，请修复文档后导入")
+            seen.add(current)
+            chain.append(current)
+            current = parents.get(current)
+        hidden = toggles.get(current, False)
+        for item in reversed(chain):
+            hidden ^= direct[item]
+            toggles[item] = hidden
+    base = _enabled(root.find(W + "docDefaults/" + W + "rPrDefault/" + W + "rPr/" + W + "vanish"))
+    return levels, (base, defaults, toggles)
 
 
 def _read_docx(path, limit):
@@ -122,7 +165,8 @@ def _read_docx(path, limit):
             ):
                 raise ValueError("Word 正文、样式或注释解压后过大，请拆分或简化文档后导入")
             info = package.getinfo("word/document.xml")
-            levels = _word_styles(package)
+            levels, visibility = _word_styles(package)
+            references = set()
             length = 0
             skipped_toc = False
             with package.open(info) as stream:
@@ -131,7 +175,7 @@ def _read_docx(path, limit):
                         continue
                     style = paragraph.find(W + "pPr/" + W + "pStyle")
                     style = style.get(W + "val", "") if style is not None else ""
-                    content = _visible_text(paragraph).replace("\r", "\n")
+                    content = _visible_text(paragraph, visibility, references).replace("\r", "\n")
                     if re.fullmatch(r"(?:TOC|目录)\s*(?:[1-9]|Heading)", style, re.I):
                         skipped_toc = True
                         paragraph.clear()
@@ -167,9 +211,15 @@ def _read_docx(path, limit):
                     root = ET.fromstring(package.read(part))
                     for note in root.findall(W + tag):
                         note_id = note.get(W + "id", "")
-                        if not note_id.isdigit() or int(note_id) < 1:
+                        if (
+                            (tag, note_id) not in references
+                            or not note_id.isdigit()
+                            or int(note_id) < 1
+                        ):
                             continue
-                        body = "\n".join(_visible_text(p) for p in note.findall(W + "p")).strip()
+                        body = "\n".join(
+                            _visible_text(p, visibility, references) for p in note.findall(W + "p")
+                        ).strip()
                         if body:
                             notes.append("[注" + note_id + "] " + body)
                 if notes:
@@ -213,7 +263,7 @@ def _read_doc(path, limit):
     with path.open("rb") as stream:
         signature = stream.read(16)
     if signature.lstrip().startswith(b"{\\rtf"):
-        return _read_rtf(path, limit)
+        return read_isolated(path, "rtf", limit)
     if not olefile.isOleFile(str(path)):
         raise ValueError("DOC 不是有效的 Word 二进制文档；可另存为 DOCX 后导入")
     with olefile.OleFileIO(str(path)) as package:
@@ -301,6 +351,8 @@ def _read_rtf(path, limit):
     from striprtf.striprtf import rtf_to_text
 
     text = rtf_to_text(path.read_bytes().decode("latin1"), errors="strict").replace("\r", "\n")
+    if len(text) > MAX_CHARS:
+        raise ValueError("RTF 展开正文超过 400 万字，请拆分后导入")
     if limit:
         text = text[:limit]
     if not text.strip() and not limit:
@@ -372,6 +424,9 @@ def _read_pdf(path, limit):
                 raise ValueError("PDF 已加密，请先使用密码解密后导入")
             if not document.permissions & pymupdf.PDF_PERM_COPY:
                 raise ValueError("PDF 限制文字复制，无法提取正文")
+            if len(document) > MAX_PAGES:
+                raise ValueError("PDF 超过 4000 页，请拆分后导入")
+            characters = line_count = 0
             for level, label, page in document.get_toc():
                 toc[label.strip()] = min(level, 2)
             title = (document.metadata or {}).get("title", "").strip()
@@ -398,6 +453,10 @@ def _read_pdf(path, limit):
                         ).strip()
                         if not text:
                             continue
+                        characters += len(text)
+                        line_count += 1
+                        if characters > MAX_CHARS or line_count > MAX_LINES:
+                            raise ValueError("PDF 展开后的文字或排版行数过多，请拆分后导入")
                         size = max(
                             (span.get("size", 0) for span in line.get("spans", [])), default=0
                         )
@@ -482,6 +541,10 @@ def _read_pdf(path, limit):
         if limit and length >= limit:
             break
     text = "\n".join(lines).strip()
+    if limit:
+        text = text[:limit]
+        line_total = text.count("\n") + 1
+        headings = {line: level for line, level in headings.items() if line <= line_total}
     if not text and not limit:
         raise ValueError("PDF 没有可提取的文字，可能是扫描版；请先 OCR 后导入")
     if removed:
@@ -496,6 +559,10 @@ def read_document(path, limit=None):
     path = Path(path)
     if not path.is_file():
         raise ValueError("源文件不存在")
+    from batch_limits import MAX_FILE_BYTES
+
+    if path.stat().st_size > MAX_FILE_BYTES:
+        raise ValueError("文件超过单本 64 MiB 限制，请拆分后导入")
     if not path.stat().st_size:
         raise ValueError("源文件为空")
     suffix = path.suffix.lower()
@@ -503,8 +570,6 @@ def read_document(path, limit=None):
         return _read_docx(path, limit)
     if suffix == ".doc":
         return _read_doc(path, limit)
-    if suffix == ".rtf":
-        return _read_rtf(path, limit)
-    if suffix == ".pdf":
-        return _read_pdf(path, limit)
+    if suffix in (".rtf", ".pdf"):
+        return read_isolated(path, suffix[1:], limit)
     raise ValueError("请选择 TXT、Word（DOC/DOCX/RTF）或文字型 PDF")
