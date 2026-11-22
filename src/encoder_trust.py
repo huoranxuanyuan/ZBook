@@ -6,10 +6,7 @@ from pathlib import Path
 import hashlib
 import json
 import os
-import sys
 import uuid
-
-from paths import APP_ROOT
 
 BUILTIN_HASH = "03b0e16a66053cf57a4a5d6f14847e7e62d695fb1ec9e3f400d23d21b311c0a1"
 NAMES = {"kindling.exe", "kindling-cli-windows.exe", "kindlegen.exe", "ebook-convert.exe"}
@@ -47,7 +44,7 @@ def approve(selected):
 
 def expected_encoder(configured="", explicit=None):
     if not configured:
-        path = Path(getattr(sys, "_MEIPASS", APP_ROOT)) / "engines/kindling/kindling.exe"
+        path = Path(__file__).resolve().parent / "engines/kindling/kindling.exe"
         return {"path": str(path.resolve()), "sha256": BUILTIN_HASH}
     try:
         selected = (

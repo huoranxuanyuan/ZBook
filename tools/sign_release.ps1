@@ -8,7 +8,7 @@ param(
     [Parameter(ParameterSetName='Verify', Mandatory)][string] $ReleaseDirectory
 )
 $ErrorActionPreference = 'Stop'
-$publicFile = Join-Path (Split-Path $PSScriptRoot -Parent) 'release-public.pem'
+$publicFile = Join-Path $PSScriptRoot 'release-public.pem'
 $algorithm = [System.Security.Cryptography.HashAlgorithmName]::SHA256
 $format = [System.Security.Cryptography.DSASignatureFormat]::Rfc3279DerSequence
 if ($Initialize -or $Sign) {

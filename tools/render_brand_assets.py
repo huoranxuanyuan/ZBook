@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Re-export C / page to Kindle from the approved artwork in assets/branding."""
+"""Re-export C / page to Kindle from the approved artwork in src/assets/branding."""
 
 import argparse
 import base64
@@ -11,7 +11,7 @@ from pathlib import Path
 import pymupdf
 from PIL import Image
 
-SOURCE = Path(__file__).resolve().parents[1] / "assets" / "branding"
+SOURCE = Path(__file__).resolve().parents[1] / "src" / "assets" / "branding"
 SIZES = (16, 20, 24, 32, 40, 48, 64, 96, 128, 256, 512, 1024)
 MARK_SIZES = sorted({*SIZES, 26, 30, 60})
 NATIVE_MARKS = (26, 30, 60)

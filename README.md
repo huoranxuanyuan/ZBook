@@ -13,18 +13,18 @@
 
 ```powershell
 py -3.14 -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements.txt
-.\.venv\Scripts\python app.py
+.\.venv\Scripts\python -m pip install -r tools/requirements.txt
+.\.venv\Scripts\python src/app.py
 ```
 
 需要打包成独立的 Windows 程序时，再运行以下命令。
 
 ```powershell
-.\.venv\Scripts\python -m pip install -r requirements-build.txt
-.\.venv\Scripts\python -m pip download --only-binary=:all: --no-deps -r requirements-build.txt -d .wheels
-.\.venv\Scripts\python build_release.py --dist-dir release-output
+.\.venv\Scripts\python -m pip install -r tools/requirements-build.txt
+.\.venv\Scripts\python -m pip download --only-binary=:all: --no-deps -r tools/requirements-build.txt -d .wheels
+.\.venv\Scripts\python tools/build_release.py --dist-dir release-output
 ```
 
 </details>
 
-作者 huoranxuanyuan。[项目许可](LICENSE) · [第三方组件](THIRD_PARTY_NOTICES.md)
+作者 huoranxuanyuan。[项目许可](LICENSE) · [第三方组件](licenses/THIRD_PARTY_NOTICES.md)

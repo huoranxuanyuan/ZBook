@@ -15,7 +15,7 @@ def digest(path):
 
 
 def verify_wheels(root, directory):
-    lock = json.loads((root / "windows-wheels.json").read_text(encoding="utf-8"))
+    lock = json.loads((root / "tools/windows-wheels.json").read_text(encoding="utf-8"))
     checked = {}
     for package, entry in lock.items():
         wheel = directory / entry["file"]

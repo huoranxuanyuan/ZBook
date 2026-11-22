@@ -3,10 +3,13 @@
 
 from pathlib import Path
 import argparse, datetime, hashlib, importlib.metadata as metadata, json, os, shutil, subprocess, sys, zipfile
-from branding import VERSION, AUTHOR, COPYRIGHT, ICON_FILE
 
-ROOT = Path(__file__).resolve().parent
-from publication import publication, PORTABLE_GENERATED
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE_DIR = ROOT / "src"
+sys.path[:0] = [str(SOURCE_DIR), str(ROOT)]
+
+from branding import VERSION, AUTHOR, COPYRIGHT, ICON_FILE
+from tools.publication import publication, PORTABLE_GENERATED
 from tools.verify_wheels import verify_wheels
 
 
@@ -85,7 +88,7 @@ def main():
     inputs, portable_names = publication(ROOT)
     wheel_digests = verify_wheels(ROOT, args.wheel_dir)
     source_manifest = {p.relative_to(ROOT).as_posix(): digest(p) for p in inputs}
-    engine = ROOT / "engines/kindling/kindling.exe"
+    engine = SOURCE_DIR / "engines/kindling/kindling.exe"
     origin = json.loads(engine.with_name("origin.json").read_text(encoding="utf-8"))
     if digest(engine) != origin["sha256"]:
         raise ValueError("Encoder integrity check failed")
@@ -112,7 +115,7 @@ def main():
         "--icon",
         str(icon),
         "--paths",
-        str(ROOT),
+        str(SOURCE_DIR),
         "--distpath",
         str(portable),
         "--workpath",
@@ -173,7 +176,7 @@ def main():
             f for f in dist.files if f.name == "METADATA" and f.parent.name.endswith(".dist-info")
         )
         command += ["--add-data", str(dist.locate_file(meta)) + ";" + meta.parent.name]
-    command.append(str(ROOT / "app.py"))
+    command.append(str(SOURCE_DIR / "app.py"))
     env = os.environ.copy()
     env["TMP"] = env["TEMP"] = str(work)
     env["ZBOOK_DATA_DIR"] = str(work / "runtime")

@@ -1,6 +1,6 @@
 # 第三方组件
 
-ZBook 原创部分由 huoranxuanyuan 编写，采用 GNU AGPL-3.0-only。完整许可见 [LICENSE](LICENSE)。第三方许可按组件整理，每段保留上游文件名、版权声明和原文。[许可原文](licenses/)
+ZBook 原创部分由 huoranxuanyuan 编写，采用 GNU AGPL-3.0-only。完整许可见 [LICENSE](../LICENSE)。第三方许可按组件整理，每段保留上游文件名、版权声明和原文。[许可原文](./)
 
 | 组件 | 用途 | 许可 |
 | --- | --- | --- |

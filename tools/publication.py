@@ -21,8 +21,8 @@ LOCAL_DIRECTORIES = {
 
 
 def publication(root):
-    listing = root / "release-files.txt"
-    if already_linked(listing):
+    listing = root / "tools" / "release-files.txt"
+    if already_linked(listing.parent) or already_linked(listing):
         raise ValueError("Invalid release allowlist location")
     source, portable, keys = [], [], set()
     for row in listing.read_text(encoding="utf-8").splitlines():
