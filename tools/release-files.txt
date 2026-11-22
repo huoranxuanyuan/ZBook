@@ -85,6 +85,7 @@ source src/assets/branding/mark-white-96.png
 source src/assets/branding/mark-white.svg
 source src/assets/branding/page-turn.png
 source src/assets/branding/zbook.ico
+both src/assets/screenshots/cover-search.jpg
 both src/assets/screenshots/main-window.jpg
 source src/batch.py
 source src/batch_limits.py
